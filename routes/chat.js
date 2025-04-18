@@ -1070,8 +1070,46 @@ router.post('/', async (req, res) => {
       // 액션에 따른 처리
       if (action === 'create') {
         // 이벤트 생성 처리
-        responseMessage = `새 일정을 생성합니다: ${parsedResponse.event.summary}`;
-        // 실제 이벤트 생성 로직은 여기에 구현
+        try {
+          console.log('[채팅] 일정 생성 시작:', JSON.stringify(parsedResponse.event));
+          
+          // 이벤트 데이터 준비
+          const eventData = {
+            summary: parsedResponse.event.summary,
+            description: parsedResponse.event.description || '',
+            location: parsedResponse.event.location || '',
+            start: parsedResponse.event.start,
+            end: parsedResponse.event.end
+          };
+          
+          // 캘린더 API 호출하여 이벤트 생성
+          const response = await axios.post(`${req.protocol}://${req.get('host')}/api/calendar/events`, eventData, {
+            headers: {
+              'Content-Type': 'application/json',
+              Cookie: req.headers.cookie
+            }
+          });
+          
+          if (response.data.success) {
+            console.log('[채팅] 일정 생성 성공:', response.data.event.id);
+            const startDate = new Date(response.data.event.start.dateTime || response.data.event.start.date);
+            const formattedDate = `${startDate.getMonth() + 1}월 ${startDate.getDate()}일 ${startDate.getHours()}시`;
+            
+            responseMessage = `"${response.data.event.summary}" 일정이 ${formattedDate}에 생성되었습니다.`;
+            eventDetails = response.data.event;
+          } else {
+            console.error('[채팅] 일정 생성 실패:', response.data.error);
+            responseMessage = `일정 생성에 실패했습니다: ${response.data.error || '알 수 없는 오류'}`;
+          }
+        } catch (error) {
+          console.error('[채팅] 일정 생성 중 오류:', error.message);
+          responseMessage = '일정 생성 중 오류가 발생했습니다. 다시 시도해주세요.';
+          
+          if (error.response) {
+            console.error('[채팅] API 응답 코드:', error.response.status);
+            console.error('[채팅] API 오류 데이터:', JSON.stringify(error.response.data).substring(0, 200));
+          }
+        }
       } 
       else if (action === 'get') {
         // 날짜 정보 추출
