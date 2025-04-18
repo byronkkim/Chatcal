@@ -26,8 +26,8 @@ try {
 }
 
 // Google OAuth 클라이언트 설정
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1096039841803-h3fm0cntp096bcbggs9quf80cfvi2m35.apps.googleusercontent.com';
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3002/api/auth/callback';
 
 // 캘린더 API 초기화 함수
@@ -1038,17 +1038,36 @@ router.post('/', async (req, res) => {
   try {
     // OpenAI에 메시지 전송
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `당신은 일정 관리 봇입니다. 사용자(${user.email})의 구글 캘린더 일정을 관리합니다. 
-자연어 명령을 분석하여 다음 형식의 JSON으로 응답하세요:
+          content: `일정 관리 봇으로서 메시지 분석 후 JSON으로 응답하세요:
+
+1. 일정 관련 여부 판단
+   - 일정 관련 아니면: {"is_calendar_related": false, "text": "저는 일정 관리에 관한 질문만 답변할 수 있습니다."}
+   - 일정 관련이면: action(add/remove/edit), title, start_datetime, end_datetime 추출
+
+2. 액션별 처리:
+   - add: title, start_datetime(필수), end_datetime(선택)
+     필수값 누락 시: "XX를 알려주세요" 메시지
+     모두 있으면: "일정 추가를 처리하겠습니다" 추가
+   - remove: title 또는 start_datetime(필수)
+     필수값 있으면: "일정 삭제를 처리하겠습니다" 추가
+
+3. 응답 형식:
 {
-  "action": "create"|"update"|"delete"|"get",
-  "event": { 필요한 이벤트 정보 }
+  "is_calendar_related": true,
+  "text": "사용자에게 보여줄 메시지",
+  "action": "add/remove/edit/none",
+  "title": "일정 이름",
+  "start_datetime": "YYYY-MM-DDTHH:MM:SS",
+  "end_datetime": "YYYY-MM-DDTHH:MM:SS"
 }
-`
+
+* 날짜/시간: ISO 8601 형식(YYYY-MM-DDTHH:MM:SS+09:00), 현재 시각: ${new Date().toISOString()}
+* 상대적 날짜 표현("오늘", "내일" 등)은 정확한 날짜로 변환
+* end_datetime 누락 시 start_datetime + 1시간으로 설정`
         },
         { role: "user", content: req.body.message }
       ],
@@ -1061,25 +1080,53 @@ router.post('/', async (req, res) => {
     try {
       // OpenAI 응답 파싱
       const parsedResponse = JSON.parse(responseContent);
+      
+      // 일정 관련 내용이 아닐 경우
+      if (!parsedResponse.is_calendar_related) {
+        return res.json({
+          message: parsedResponse.text,
+          action: "none"
+        });
+      }
+      
       const action = parsedResponse.action;
       console.log('[채팅] 파싱된 액션:', action);
 
-      let responseMessage = '';
+      let responseMessage = parsedResponse.text;
       let eventDetails = null;
 
       // 액션에 따른 처리
-      if (action === 'create') {
-        // 이벤트 생성 처리
+      if (action === 'add') {
+        // 필수값 체크 (title, start_datetime)
+        if (!parsedResponse.title || !parsedResponse.start_datetime) {
+          return res.json({
+            message: responseMessage,
+            action: action
+          });
+        }
+        
         try {
-          console.log('[채팅] 일정 생성 시작:', JSON.stringify(parsedResponse.event));
+          console.log('[채팅] 일정 생성 시작:', JSON.stringify(parsedResponse));
+          
+          // end_datetime이 없으면 start_datetime + 1시간으로 설정
+          const startDateTime = new Date(parsedResponse.start_datetime);
+          const endDateTime = parsedResponse.end_datetime 
+            ? new Date(parsedResponse.end_datetime)
+            : new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1시간 추가
           
           // 이벤트 데이터 준비
           const eventData = {
-            summary: parsedResponse.event.summary,
-            description: parsedResponse.event.description || '',
-            location: parsedResponse.event.location || '',
-            start: parsedResponse.event.start,
-            end: parsedResponse.event.end
+            summary: parsedResponse.title,
+            description: parsedResponse.description || '',
+            location: parsedResponse.location || '',
+            start: {
+              dateTime: startDateTime.toISOString(),
+              timeZone: 'Asia/Seoul'
+            },
+            end: {
+              dateTime: endDateTime.toISOString(),
+              timeZone: 'Asia/Seoul'
+            }
           };
           
           // 캘린더 API 호출하여 이벤트 생성
@@ -1111,156 +1158,122 @@ router.post('/', async (req, res) => {
           }
         }
       } 
-      else if (action === 'get') {
-        // 날짜 정보 추출
-        const { targetDate } = await extractDateInfo(req.body.message);
-        
-        // 이벤트 제목 추출
-        const eventTitle = extractEventTitle(req.body.message, 'get');
-        
-        // 캘린더 이벤트 조회
-        const event = await findEventByTitle(req, eventTitle, targetDate);
-        
-        if (event) {
-          const eventTime = new Date(event.start.dateTime || event.start.date);
-          const formattedTime = `${eventTime.getMonth() + 1}월 ${eventTime.getDate()}일 ${eventTime.getHours()}시 ${eventTime.getMinutes()}분`;
-          
-          responseMessage = `"${event.summary}" 일정은 ${formattedTime}에 있습니다.`;
-          eventDetails = event;
-        } else {
-          responseMessage = eventTitle 
-            ? `"${eventTitle}" 관련 일정을 찾지 못했습니다.` 
-            : "해당 날짜에 일정이 없습니다.";
+      else if (action === 'remove') {
+        // title 또는 start_datetime 중 하나는 필수
+        if (!parsedResponse.title && !parsedResponse.start_datetime) {
+          responseMessage = "삭제할 일정의 제목이나 시간을 알려주세요.";
+          return res.json({
+            message: responseMessage,
+            action: action
+          });
         }
-      } 
-      else if (action === 'delete') {
-        // 날짜 정보 추출
-        const { targetDate } = await extractDateInfo(req.body.message);
         
-        // 이벤트 제목 추출
-        const eventTitle = extractEventTitle(req.body.message, 'delete');
-        
-        if (!eventTitle) {
-          responseMessage = "삭제할 일정의 제목을 알려주세요.";
-        } else {
-          // 캘린더 이벤트 검색
-          const event = await findEventByTitle(req, eventTitle, targetDate);
-          
-          if (event) {
-            // 이벤트 삭제 API 호출
-            const deleteResponse = await axios.delete(`${req.protocol}://${req.get('host')}/api/calendar/events/${event.id}`, {
+        try {
+          // start_datetime으로 검색하는 경우
+          if (parsedResponse.start_datetime) {
+            // 시간 기반 검색을 위한 시간 범위 설정
+            const targetDate = new Date(parsedResponse.start_datetime);
+            const startOfDay = new Date(targetDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            
+            const endOfDay = new Date(targetDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            
+            // 해당 날짜의 이벤트 조회
+            const response = await axios.get(`${req.protocol}://${req.get('host')}/api/calendar/events`, {
               headers: {
                 Cookie: req.headers.cookie
+              },
+              params: {
+                timeMin: startOfDay.toISOString(),
+                timeMax: endOfDay.toISOString()
               }
             });
             
-            if (deleteResponse.data.success) {
-              const eventTime = new Date(event.start.dateTime || event.start.date);
-              const formattedTime = `${eventTime.getMonth() + 1}월 ${eventTime.getDate()}일 ${eventTime.getHours()}시`;
-              
-              responseMessage = `"${event.summary}" 일정이 성공적으로 삭제되었습니다.`;
-              eventDetails = event;
-            } else {
-              responseMessage = `일정 삭제 중 오류가 발생했습니다: ${deleteResponse.data.error || "알 수 없는 오류"}`;
-            }
-          } else {
-            responseMessage = `"${eventTitle}" 일정을 찾지 못했습니다. 정확한 일정 제목을 입력해주세요.`;
-          }
-        }
-      } 
-      else if (action === 'update') {
-        // 일정 업데이트 처리
-        try {
-          console.log('[채팅] 일정 업데이트 시작:', JSON.stringify(parsedResponse.event));
-          
-          // 업데이트할 이벤트의 ID와 제목 확인
-          const eventId = parsedResponse.event.id;
-          const eventTitle = parsedResponse.event.summary;
-          let foundEvent = null;
-          
-          // ID가 없는 경우 제목으로 이벤트 찾기
-          if (!eventId && eventTitle) {
-            // 날짜 정보 추출
-            const { targetDate } = await extractDateInfo(req.body.message);
+            const events = response.data.events || [];
             
-            // 이벤트 검색
-            foundEvent = await findEventByTitle(req, eventTitle, targetDate);
-            
-            if (!foundEvent) {
-              console.log('[채팅] 이벤트를 찾지 못함:', eventTitle);
-              responseMessage = `"${eventTitle}" 제목의 일정을 찾을 수 없습니다.`;
+            if (events.length === 0) {
+              responseMessage = "해당 시간에 일정이 없습니다.";
               return res.json({
                 message: responseMessage,
-                action: action,
-                rawResponse: responseContent
+                action: action
               });
             }
             
-            console.log('[채팅] 제목으로 찾은 이벤트:', foundEvent.id);
-          }
-          
-          // 업데이트할 이벤트 데이터 준비
-          const eventData = {
-            id: eventId || (foundEvent ? foundEvent.id : null),
-            summary: parsedResponse.event.summary || (foundEvent ? foundEvent.summary : ''),
-            description: parsedResponse.event.description || (foundEvent ? foundEvent.description : ''),
-            location: parsedResponse.event.location || (foundEvent ? foundEvent.location : ''),
-            start: parsedResponse.event.start || (foundEvent ? foundEvent.start : null),
-            end: parsedResponse.event.end || (foundEvent ? foundEvent.end : null)
-          };
-          
-          // 이벤트 ID 확인
-          if (!eventData.id) {
-            responseMessage = '업데이트할 일정을 특정할 수 없습니다. 좀 더 정확한 정보를 제공해주세요.';
-            return res.json({
-              message: responseMessage,
-              action: action,
-              rawResponse: responseContent
-            });
-          }
-          
-          // 캘린더 API 호출하여 이벤트 업데이트
-          const response = await axios.put(
-            `${req.protocol}://${req.get('host')}/api/calendar/events/${eventData.id}`,
-            eventData,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                Cookie: req.headers.cookie
-              }
-            }
-          );
-          
-          if (response.data.success) {
-            console.log('[채팅] 일정 업데이트 성공:', response.data.event.id);
-            const startDate = new Date(response.data.event.start.dateTime || response.data.event.start.date);
-            const formattedDate = `${startDate.getMonth() + 1}월 ${startDate.getDate()}일 ${startDate.getHours()}시`;
+            // 시간에 가장 가까운 이벤트 찾기
+            const closestEvent = findClosestEventByTime(events, targetDate);
             
-            responseMessage = `"${response.data.event.summary}" 일정이 ${formattedDate}로 업데이트되었습니다.`;
-            eventDetails = response.data.event;
-          } else {
-            console.error('[채팅] 일정 업데이트 실패:', response.data.error);
-            responseMessage = `일정 업데이트에 실패했습니다: ${response.data.error || '알 수 없는 오류'}`;
+            if (closestEvent) {
+              // 이벤트 삭제 API 호출
+              const deleteResponse = await axios.delete(`${req.protocol}://${req.get('host')}/api/calendar/events/${closestEvent.id}`, {
+                headers: {
+                  Cookie: req.headers.cookie
+                }
+              });
+              
+              if (deleteResponse.data.success) {
+                const eventTime = new Date(closestEvent.start.dateTime || closestEvent.start.date);
+                const formattedTime = `${eventTime.getMonth() + 1}월 ${eventTime.getDate()}일 ${eventTime.getHours()}시`;
+                
+                responseMessage = `"${closestEvent.summary}" 일정이 성공적으로 삭제되었습니다.`;
+                eventDetails = closestEvent;
+              } else {
+                responseMessage = `일정 삭제 중 오류가 발생했습니다: ${deleteResponse.data.error || "알 수 없는 오류"}`;
+              }
+            } else {
+              responseMessage = "해당 시간에 가까운 일정을 찾지 못했습니다.";
+            }
+          } 
+          // title로 검색하는 경우
+          else if (parsedResponse.title) {
+            // 오늘 날짜로 설정
+            const today = new Date();
+            
+            // 이벤트 검색
+            const event = await findEventByTitle(req, parsedResponse.title, today);
+            
+            if (event) {
+              // 이벤트 삭제 API 호출
+              const deleteResponse = await axios.delete(`${req.protocol}://${req.get('host')}/api/calendar/events/${event.id}`, {
+                headers: {
+                  Cookie: req.headers.cookie
+                }
+              });
+              
+              if (deleteResponse.data.success) {
+                const eventTime = new Date(event.start.dateTime || event.start.date);
+                const formattedTime = `${eventTime.getMonth() + 1}월 ${eventTime.getDate()}일 ${eventTime.getHours()}시`;
+                
+                responseMessage = `"${event.summary}" 일정이 성공적으로 삭제되었습니다.`;
+                eventDetails = event;
+              } else {
+                responseMessage = `일정 삭제 중 오류가 발생했습니다: ${deleteResponse.data.error || "알 수 없는 오류"}`;
+              }
+            } else {
+              responseMessage = `"${parsedResponse.title}" 일정을 찾지 못했습니다. 정확한 일정 제목을 입력해주세요.`;
+            }
           }
         } catch (error) {
-          console.error('[채팅] 일정 업데이트 중 오류:', error.message);
-          responseMessage = '일정 업데이트 중 오류가 발생했습니다. 다시 시도해주세요.';
+          console.error('[채팅] 일정 삭제 중 오류:', error.message);
+          responseMessage = '일정 삭제 중 오류가 발생했습니다. 다시 시도해주세요.';
           
           if (error.response) {
             console.error('[채팅] API 응답 코드:', error.response.status);
             console.error('[채팅] API 오류 데이터:', JSON.stringify(error.response.data).substring(0, 200));
           }
         }
-      } 
+      }
+      else if (action === 'edit') {
+        responseMessage = "현재 일정 수정 기능은 지원하지 않습니다. 삭제 후 다시 추가해주세요.";
+      }
       else {
-        responseMessage = "지원하지 않는 명령입니다. 일정 생성, 조회, 삭제만 가능합니다.";
+        responseMessage = "지원하지 않는 명령입니다. 일정 추가나 삭제만 가능합니다.";
       }
 
       // 최종 응답
       return res.json({
         message: responseMessage,
         action: action,
-        rawResponse: responseContent,
         eventDetails: eventDetails
       });
       

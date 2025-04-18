@@ -20,8 +20,10 @@ class ChatManager {
     });
     
     // IME 입력 종료 이벤트 감지
-    this.messageInput.addEventListener('compositionend', (event) => {
+    this.messageInput.addEventListener('compositionend', () => {
       this.isComposing = false;
+      // IME 입력 완료 후 텍스트 영역 높이 조절
+      this.adjustTextareaHeight();
     });
     
     // 키다운 이벤트를 IME 상태에 따라 처리
@@ -39,7 +41,12 @@ class ChatManager {
     });
     
     // 텍스트 영역 크기 자동 조절
-    this.messageInput.addEventListener('input', () => this.adjustTextareaHeight());
+    this.messageInput.addEventListener('input', () => {
+      // IME 입력 중이 아닐 때만 높이 조절
+      if (!this.isComposing) {
+        this.adjustTextareaHeight();
+      }
+    });
     
     // 로그인 상태 확인 및 처리
     this.checkLoginStatus();
@@ -88,6 +95,16 @@ class ChatManager {
       // 로딩 메시지 표시
       const loadingMessageId = Date.now();
       this.addMessage('시스템', '요청을 처리 중입니다...', 'system', loadingMessageId);
+
+      // 로딩 표시기 추가
+      const loadingIndicator = document.createElement('div');
+      loadingIndicator.className = 'loading-indicator';
+      loadingIndicator.innerHTML = '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div>';
+      
+      const loadingMessage = document.getElementById(`message-${loadingMessageId}`);
+      if (loadingMessage) {
+        loadingMessage.querySelector('.message-content').appendChild(loadingIndicator);
+      }
       
       // 서버에 메시지 전송
       const response = await fetch('/api/chat', {
@@ -99,7 +116,6 @@ class ChatManager {
       });
       
       // 로딩 메시지 제거
-      const loadingMessage = document.getElementById(`message-${loadingMessageId}`);
       if (loadingMessage) {
         loadingMessage.remove();
       }
@@ -154,18 +170,22 @@ class ChatManager {
       }
       
       // 이벤트 상세 정보 추가
-      responseText += `\n\n📅 ${data.eventDetails.summary}`;
-      responseText += `\n🕒 ${startTimeStr}`;
-      if (endTimeStr) responseText += ` ~ ${endTimeStr}`;
-      if (data.eventDetails.location) responseText += `\n📍 ${data.eventDetails.location}`;
-      if (data.eventDetails.description) responseText += `\n📝 ${data.eventDetails.description}`;
+      let eventDetailsText = '\n\n📅 일정 정보:';
+      eventDetailsText += `\n제목: ${data.eventDetails.summary}`;
+      eventDetailsText += `\n시간: ${startTimeStr}`;
+      if (endTimeStr) eventDetailsText += ` ~ ${endTimeStr}`;
+      if (data.eventDetails.location) eventDetailsText += `\n장소: ${data.eventDetails.location}`;
+      if (data.eventDetails.description) eventDetailsText += `\n설명: ${data.eventDetails.description}`;
+      
+      responseText += eventDetailsText;
     }
     
     // 응답 표시
     this.addMessage('ChatCal', responseText, 'assistant');
     
     // 이벤트 생성이나 삭제 성공 시 이벤트 발생
-    if ((data.action === 'create' || data.action === 'delete' || data.action === 'update') && data.message.includes('성공')) {
+    if ((data.action === 'add' || data.action === 'remove') && 
+        (data.message.includes('생성') || data.message.includes('삭제') || data.message.includes('성공'))) {
       // 캘린더 새로고침 이벤트 발생
       const refreshEvent = new CustomEvent('calendar:refresh');
       window.dispatchEvent(refreshEvent);

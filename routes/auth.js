@@ -6,8 +6,8 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 
 // Google OAuth 클라이언트 설정
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1096039841803-h3fm0cntp096bcbggs9quf80cfvi2m35.apps.googleusercontent.com';
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3002/api/auth/callback';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
