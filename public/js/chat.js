@@ -233,7 +233,15 @@ class ChatManager {
     this.messagesContainer.appendChild(messageElement);
     
     // 메시지 컨테이너를 맨 아래로 스크롤
-    this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    this.scrollToBottom();
+  }
+  
+  // 채팅 영역을 맨 아래로 스크롤하는 함수
+  scrollToBottom() {
+    // 약간의 지연 후 스크롤 실행 (DOM 업데이트 완료 보장)
+    setTimeout(() => {
+      this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }, 10);
   }
 }
 
