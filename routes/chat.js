@@ -1169,7 +1169,88 @@ router.post('/', async (req, res) => {
         }
       } 
       else if (action === 'update') {
-        responseMessage = "일정 업데이트 기능은 준비 중입니다.";
+        // 일정 업데이트 처리
+        try {
+          console.log('[채팅] 일정 업데이트 시작:', JSON.stringify(parsedResponse.event));
+          
+          // 업데이트할 이벤트의 ID와 제목 확인
+          const eventId = parsedResponse.event.id;
+          const eventTitle = parsedResponse.event.summary;
+          let foundEvent = null;
+          
+          // ID가 없는 경우 제목으로 이벤트 찾기
+          if (!eventId && eventTitle) {
+            // 날짜 정보 추출
+            const { targetDate } = await extractDateInfo(req.body.message);
+            
+            // 이벤트 검색
+            foundEvent = await findEventByTitle(req, eventTitle, targetDate);
+            
+            if (!foundEvent) {
+              console.log('[채팅] 이벤트를 찾지 못함:', eventTitle);
+              responseMessage = `"${eventTitle}" 제목의 일정을 찾을 수 없습니다.`;
+              return res.json({
+                message: responseMessage,
+                action: action,
+                rawResponse: responseContent
+              });
+            }
+            
+            console.log('[채팅] 제목으로 찾은 이벤트:', foundEvent.id);
+          }
+          
+          // 업데이트할 이벤트 데이터 준비
+          const eventData = {
+            id: eventId || (foundEvent ? foundEvent.id : null),
+            summary: parsedResponse.event.summary || (foundEvent ? foundEvent.summary : ''),
+            description: parsedResponse.event.description || (foundEvent ? foundEvent.description : ''),
+            location: parsedResponse.event.location || (foundEvent ? foundEvent.location : ''),
+            start: parsedResponse.event.start || (foundEvent ? foundEvent.start : null),
+            end: parsedResponse.event.end || (foundEvent ? foundEvent.end : null)
+          };
+          
+          // 이벤트 ID 확인
+          if (!eventData.id) {
+            responseMessage = '업데이트할 일정을 특정할 수 없습니다. 좀 더 정확한 정보를 제공해주세요.';
+            return res.json({
+              message: responseMessage,
+              action: action,
+              rawResponse: responseContent
+            });
+          }
+          
+          // 캘린더 API 호출하여 이벤트 업데이트
+          const response = await axios.put(
+            `${req.protocol}://${req.get('host')}/api/calendar/events/${eventData.id}`,
+            eventData,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                Cookie: req.headers.cookie
+              }
+            }
+          );
+          
+          if (response.data.success) {
+            console.log('[채팅] 일정 업데이트 성공:', response.data.event.id);
+            const startDate = new Date(response.data.event.start.dateTime || response.data.event.start.date);
+            const formattedDate = `${startDate.getMonth() + 1}월 ${startDate.getDate()}일 ${startDate.getHours()}시`;
+            
+            responseMessage = `"${response.data.event.summary}" 일정이 ${formattedDate}로 업데이트되었습니다.`;
+            eventDetails = response.data.event;
+          } else {
+            console.error('[채팅] 일정 업데이트 실패:', response.data.error);
+            responseMessage = `일정 업데이트에 실패했습니다: ${response.data.error || '알 수 없는 오류'}`;
+          }
+        } catch (error) {
+          console.error('[채팅] 일정 업데이트 중 오류:', error.message);
+          responseMessage = '일정 업데이트 중 오류가 발생했습니다. 다시 시도해주세요.';
+          
+          if (error.response) {
+            console.error('[채팅] API 응답 코드:', error.response.status);
+            console.error('[채팅] API 오류 데이터:', JSON.stringify(error.response.data).substring(0, 200));
+          }
+        }
       } 
       else {
         responseMessage = "지원하지 않는 명령입니다. 일정 생성, 조회, 삭제만 가능합니다.";
