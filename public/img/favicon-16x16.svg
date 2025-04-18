@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
-  <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
-    <rect fill="#4285F4" x="2" y="3" width="9" height="9" rx="1"></rect>
-    <rect fill="#FFFFFF" x="3" y="5" width="1.5" height="1.5" rx="0.2"></rect>
-    <rect fill="#FFFFFF" x="5.5" y="5" width="1.5" height="1.5" rx="0.2"></rect>
-    <rect fill="#FFFFFF" x="8" y="5" width="1.5" height="1.5" rx="0.2"></rect>
-    <rect fill="#FFFFFF" x="3" y="7.5" width="1.5" height="1.5" rx="0.2"></rect>
-    <rect fill="#FFFFFF" x="5.5" y="7.5" width="1.5" height="1.5" rx="0.2"></rect>
-    <rect fill="#FFFFFF" x="8" y="7.5" width="1.5" height="1.5" rx="0.2"></rect>
-    <path d="M13,5.5 C13.8284271,5.5 14.5,6.17157288 14.5,7 L14.5,10 C14.5,10.8284271 13.8284271,11.5 13,11.5 L11.5,11.5 L11.5,13 L10,11.5 L8,11.5 L8,10 L13,10 L13,7 L8,7 L8,5.5 L13,5.5 Z" fill="#34A853" fill-rule="nonzero"></path>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Four colored quadrants (Google colors) -->
+  <rect x="0" y="0" width="8" height="8" fill="#4285F4"/>
+  <rect x="8" y="0" width="8" height="8" fill="#0F9D58"/>
+  <rect x="0" y="8" width="8" height="8" fill="#FBBC05"/>
+  <rect x="8" y="8" width="8" height="8" fill="#EA4335"/>
+  <!-- White center square for AI text -->
+  <rect x="4" y="4" width="8" height="8" fill="#FFFFFF"/>
+  <!-- "AI" label -->
+  <text x="8" y="10.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="bold" fill="#000000">AI</text>
 </svg> 
