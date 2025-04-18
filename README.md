@@ -16,7 +16,7 @@ ChatCal은 자연어 입력으로 Google Calendar를 간편하게 관리할 수 
 - **API**: OpenAI Chat Completions API, Google Calendar API
 - **인증**: Google OAuth 2.0, JWT
 
-## 시작하기
+## 로컬 개발 환경 설정
 
 ### 사전 요구사항
 
@@ -74,6 +74,51 @@ ChatCal은 자연어 입력으로 Google Calendar를 간편하게 관리할 수 
 4. 승인된 JavaScript 원본: `http://localhost:3002`
 5. 승인된 리디렉션 URI: `http://localhost:3002/api/auth/callback`
 6. 생성된 클라이언트 ID와 비밀번호를 `.env` 파일에 추가
+
+## Vercel 배포 방법
+
+1. [Vercel](https://vercel.com/) 계정 생성 및 로그인
+
+2. GitHub 저장소 연결
+   - Vercel 대시보드에서 "New Project" 선택
+   - GitHub 저장소 import
+   - "Import" 버튼 클릭
+
+3. 프로젝트 설정
+   - Framework Preset: `Other`
+   - Root Directory: `.`
+   - Build Command: `npm run build`
+   - Output Directory: `public`
+
+4. 환경 변수 설정
+   - Vercel 프로젝트 설정 → "Environment Variables" 탭
+   - 다음 환경 변수 추가:
+     ```
+     OPENAI_API_KEY=sk-...
+     GOOGLE_CLIENT_ID=...
+     GOOGLE_CLIENT_SECRET=...
+     REDIRECT_URI=https://your-vercel-domain.vercel.app/api/auth/callback
+     CLIENT_URL=https://your-vercel-domain.vercel.app
+     NODE_ENV=production
+     JWT_SECRET=<무작위 문자열 생성>
+     SESSION_SECRET=<무작위 문자열 생성>
+     ```
+
+5. 배포 버튼 클릭
+   - "Deploy" 버튼 클릭
+
+6. Google Cloud Console 설정 업데이트
+   - [Google Cloud Console](https://console.cloud.google.com/)에 접속
+   - API 및 서비스 → 사용자 인증 정보로 이동
+   - OAuth 2.0 클라이언트 ID 클릭
+   - 승인된 자바스크립트 원본: `https://your-vercel-domain.vercel.app`
+   - 승인된 리디렉션 URI: `https://your-vercel-domain.vercel.app/api/auth/callback`
+
+## 보안 가이드라인
+
+- **절대로 API 키를 GitHub에 커밋하지 마세요!**
+- 모든 민감한 정보는 Vercel 환경 변수에서 관리합니다
+- 로컬 개발 시에는 .env 파일에 개발용 키를 사용하고, 이 파일은 .gitignore에 추가하여 커밋되지 않도록 합니다
 
 ## 사용 방법
 

@@ -207,11 +207,15 @@ app.use((err, req, res, next) => {
 });
 
 // 서버 시작
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, () => {
   console.log(`서버가 ${PORT} 포트에서 실행 중입니다`);
-  console.log(`스마트폰에서 접속하려면: http://<컴퓨터의IP주소>:${PORT}`);
-  console.log('* 스마트폰과 컴퓨터가 같은 WiFi에 연결되어 있어야 합니다');
-  console.log('* 개발 모드 로그인 버튼을 사용하여 로그인하세요');
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`스마트폰에서 접속하려면: http://<컴퓨터의IP주소>:${PORT}`);
+    console.log('* 스마트폰과 컴퓨터가 같은 WiFi에 연결되어 있어야 합니다');
+    console.log('* 개발 모드 로그인 버튼을 사용하여 로그인하세요');
+  } else {
+    console.log(`프로덕션 환경으로 서버가 실행 중입니다. URL: ${process.env.CLIENT_URL}`);
+  }
 });
 
 // 예기치 않은 오류 처리
