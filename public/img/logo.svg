@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128px" height="128px" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+    <!-- Calendar background -->
+    <rect fill="#4285F4" x="20" y="30" width="60" height="60" rx="4"></rect>
+    
+    <!-- Calendar header -->
+    <rect fill="#3367D6" x="20" y="30" width="60" height="12" rx="4"></rect>
+    
+    <!-- Calendar pins -->
+    <circle fill="#FFFFFF" cx="30" cy="36" r="2"></circle>
+    <circle fill="#FFFFFF" cx="70" cy="36" r="2"></circle>
+    
+    <!-- Calendar grid -->
+    <rect fill="#FFFFFF" x="28" y="50" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="42" y="50" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="56" y="50" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="70" y="50" width="8" height="8" rx="1"></rect>
+    
+    <rect fill="#FFFFFF" x="28" y="64" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="42" y="64" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="56" y="64" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="70" y="64" width="8" height="8" rx="1"></rect>
+    
+    <rect fill="#FFFFFF" x="28" y="78" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="42" y="78" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="56" y="78" width="8" height="8" rx="1"></rect>
+    <rect fill="#FFFFFF" x="70" y="78" width="8" height="8" rx="1"></rect>
+    
+    <!-- Chat bubble -->
+    <path d="M88,46 C93.5228475,46 98,50.4771525 98,56 L98,76 C98,81.5228475 93.5228475,86 88,86 L76,86 L76,96 L66,86 L48,86 L48,76 L88,76 L88,56 L48,56 L48,46 L88,46 Z" fill="#34A853" fill-rule="nonzero"></path>
+    
+    <!-- App name -->
+    <text font-family="Arial-BoldMT, Arial" font-size="12" font-weight="bold" fill="#FFFFFF">
+      <tspan x="44" y="100">ChatCal</tspan>
+    </text>
+  </g>
+</svg> 
