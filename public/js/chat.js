@@ -142,54 +142,113 @@ class ChatManager {
   }
   
   // 응답 메시지 처리
-  handleResponseMessage(data) {
-    // 기본 응답 텍스트
-    let responseText = data.message || '응답을 받지 못했습니다.';
+  handleResponseMessage(message) {
+    // 서버로부터 응답 메시지 처리
+    console.log('서버 응답:', message);
     
-    // 이벤트 상세 정보가 있으면 표시
-    if (data.eventDetails) {
-      // 시작 시간 포맷팅
-      const startDate = new Date(data.eventDetails.start.dateTime || data.eventDetails.start.date);
-      const startTimeStr = startDate.toLocaleString('ko-KR', { 
-        month: 'long', 
-        day: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
+    let responseText = message.text || '요청을 처리하는 중 오류가 발생했습니다.';
+    
+    // 이벤트 세부 정보가 있는 경우 추가 정보 표시
+    if (message.eventDetails) {
+      const event = message.eventDetails;
       
-      // 종료 시간 포맷팅
-      let endTimeStr = '';
-      if (data.eventDetails.end) {
-        const endDate = new Date(data.eventDetails.end.dateTime || data.eventDetails.end.date);
-        endTimeStr = endDate.toLocaleString('ko-KR', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        });
+      // 시작 및 종료 시간 포맷팅
+      let formattedTime = '';
+      if (event.start) {
+        const startDate = new Date(event.start);
+        let endDate = null;
+        
+        if (event.end) {
+          endDate = new Date(event.end);
+        }
+        
+        const options = {
+          month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          hour12: false
+        };
+        
+        formattedTime = startDate.toLocaleString('ko-KR', options);
+        
+        if (endDate) {
+          const endTime = endDate.toLocaleString('ko-KR', {
+            hour: '2-digit', minute: '2-digit', hour12: false
+          });
+          formattedTime += ` ~ ${endTime}`;
+        }
       }
       
-      // 이벤트 상세 정보 추가
-      let eventDetailsText = '\n\n📅 일정 정보:';
-      eventDetailsText += `\n제목: ${data.eventDetails.summary}`;
-      eventDetailsText += `\n시간: ${startTimeStr}`;
-      if (endTimeStr) eventDetailsText += ` ~ ${endTimeStr}`;
-      if (data.eventDetails.location) eventDetailsText += `\n장소: ${data.eventDetails.location}`;
-      if (data.eventDetails.description) eventDetailsText += `\n설명: ${data.eventDetails.description}`;
+      responseText += `\n\n📅 일정 정보:`;
+      responseText += `\n제목: ${event.summary || '제목 없음'}`;
       
-      responseText += eventDetailsText;
+      if (formattedTime) {
+        responseText += `\n시간: ${formattedTime}`;
+      }
+      
+      if (event.location) {
+        responseText += `\n장소: ${event.location}`;
+      }
+      
+      if (event.description) {
+        responseText += `\n설명: ${event.description}`;
+      }
     }
     
-    // 응답 표시
-    this.addMessage('ChatCal', responseText, 'assistant');
-    
-    // 이벤트 생성이나 삭제 성공 시 이벤트 발생
-    if ((data.action === 'add' || data.action === 'remove') && 
-        (data.message.includes('생성') || data.message.includes('삭제') || data.message.includes('성공'))) {
-      // 캘린더 새로고침 이벤트 발생
-      const refreshEvent = new CustomEvent('calendar:refresh');
-      window.dispatchEvent(refreshEvent);
+    // 이벤트 목록이 있는 경우 처리
+    if (message.events && message.events.length > 0) {
+      this.handleEventOptions(message.events);
+      return; // 이벤트 목록이 있으면 옵션 처리 후 함수 종료
     }
+    
+    // action 필드가 있고 성공한 경우 처리
+    if (message.action) {
+      // 일정 생성 또는 삭제가 성공적으로 완료된 경우 캘린더 새로고침
+      if ((message.action === 'create' || message.action === 'delete') && message.success) {
+        // 캘린더 새로고침 이벤트 발생
+        const refreshEvent = new CustomEvent('refreshCalendar');
+        document.dispatchEvent(refreshEvent);
+      }
+    }
+    
+    // 'time-too-far' 이유로 이벤트를 찾지 못한 경우
+    if (message.reason === 'time-too-far' && message.event) {
+      responseText = message.message || responseText;
+      
+      // 가장 가까운 이벤트 정보 추가
+      responseText += `\n\n해당 일정을 삭제하시겠습니까?`;
+      
+      // 삭제 확인 버튼 추가
+      const assistantMessage = this.addMessage('assistant', responseText);
+      
+      // 확인 버튼 추가
+      const confirmButton = document.createElement('button');
+      confirmButton.textContent = '삭제하기';
+      confirmButton.classList.add('action-button');
+      confirmButton.addEventListener('click', () => {
+        this.processConfirmedAction({
+          action: 'delete',
+          eventId: message.event.id
+        });
+      });
+      
+      const cancelButton = document.createElement('button');
+      cancelButton.textContent = '취소';
+      cancelButton.classList.add('action-button', 'cancel');
+      cancelButton.addEventListener('click', () => {
+        this.addMessage('user', '취소');
+        this.addMessage('assistant', '일정 삭제를 취소했습니다.');
+      });
+      
+      const buttonContainer = document.createElement('div');
+      buttonContainer.classList.add('button-container');
+      buttonContainer.appendChild(confirmButton);
+      buttonContainer.appendChild(cancelButton);
+      
+      assistantMessage.appendChild(buttonContainer);
+      return;
+    }
+    
+    // 일반 텍스트 응답 추가
+    this.addMessage('assistant', responseText);
   }
   
   // 메시지 추가

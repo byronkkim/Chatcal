@@ -280,7 +280,8 @@ const deleteCalendarEvent = async (calendar, eventId) => {
     console.log('[캘린더] 이벤트 삭제 성공. ID:', eventId);
     return {
       success: true,
-      eventId: eventId
+      message: '일정이 성공적으로 삭제되었습니다.',
+      action: 'delete'
     };
   } catch (error) {
     console.error('[캘린더] 이벤트 삭제 실패:', error.message);
@@ -887,8 +888,12 @@ async function findEventByTitle(req, eventTitle, targetDate) {
     console.log(`[채팅] 조회된 이벤트 수: ${events.length}`);
     
     if (events.length === 0) {
-      console.log('[채팅] 해당 날짜에 일정이 없습니다');
-      return null;
+      console.log(`[채팅] ${targetDate.toLocaleDateString('ko-KR')}에 일정이 없습니다`);
+      return {
+        found: false,
+        reason: 'no-events-on-date',
+        message: `${targetDate.toLocaleDateString('ko-KR')}에 등록된 일정이 없습니다.`
+      };
     }
     
     // 이벤트 목록 로깅
@@ -901,7 +906,7 @@ async function findEventByTitle(req, eventTitle, targetDate) {
     let matchedEvents = [];
     
     if (eventTitle && eventTitle.trim() !== '') {
-      // 제목과 정확히 일치하는 이벤트 우선 검색
+      // 1. 제목과 정확히 일치하는 이벤트 우선 검색
       const exactMatch = events.find(event => 
         event.summary && event.summary.toLowerCase() === eventTitle.toLowerCase()
       );
@@ -911,26 +916,70 @@ async function findEventByTitle(req, eventTitle, targetDate) {
         return exactMatch;
       }
       
-      // 제목에 키워드가 포함된 이벤트 검색
+      // 2. 제목에 키워드가 포함된 이벤트 검색
       matchedEvents = events.filter(event => 
         event.summary && event.summary.toLowerCase().includes(eventTitle.toLowerCase())
       );
       
       console.log(`[채팅] 키워드가 포함된 일정 수: ${matchedEvents.length}`);
       
+      // 3. 유사도 검색 - 부분 문자열 매칭 (검색어 단어들이 이벤트 제목에 부분적으로 포함되는지 확인)
+      if (matchedEvents.length === 0) {
+        console.log('[채팅] 키워드 포함 검색 실패, 부분 단어 매칭 시도');
+        const searchTerms = eventTitle.toLowerCase().split(/\s+/);
+        
+        matchedEvents = events.filter(event => {
+          if (!event.summary) return false;
+          const eventSummaryLower = event.summary.toLowerCase();
+          // 검색어의 단어 중 하나라도 제목에 포함되면 매칭으로 간주
+          return searchTerms.some(term => eventSummaryLower.includes(term));
+        });
+        
+        console.log(`[채팅] 부분 단어 매칭으로 찾은 일정 수: ${matchedEvents.length}`);
+      }
+      
       if (matchedEvents.length === 1) {
         console.log(`[채팅] 일치하는 일정 찾음: ${matchedEvents[0].summary}`);
         return matchedEvents[0];
       } else if (matchedEvents.length > 1) {
         console.log('[채팅] 여러 일정이 일치함, 시간으로 필터링 시도');
-        // 특정 시간에 가장 가까운 이벤트 찾기
-        return findClosestEventByTime(matchedEvents, targetDate);
+        // 4. 특정 시간에 가장 가까운 이벤트 찾기
+        const closestEvent = findClosestEventByTime(matchedEvents, targetDate);
+        if (closestEvent) return closestEvent;
+        
+        // 만약 시간으로 찾지 못하면, 모든 매칭된 이벤트 정보를 반환
+        return {
+          found: false,
+          reason: 'multiple-matches',
+          message: `"${eventTitle}" 키워드와 일치하는 일정이 여러 개 있습니다.`,
+          events: matchedEvents.map(e => ({
+            summary: e.summary,
+            start: e.start.dateTime || e.start.date
+          }))
+        };
       }
     }
     
-    // 시간으로 가장 가까운 이벤트 찾기
+    // 5. 시간으로 가장 가까운 이벤트 찾기
     console.log('[채팅] 제목으로 찾지 못함, 시간으로 찾기 시도');
-    return findClosestEventByTime(events, targetDate);
+    const closestEvent = findClosestEventByTime(events, targetDate);
+    
+    if (closestEvent) {
+      return closestEvent;
+    } else {
+      // 시간으로도 찾지 못한 경우, 해당 날짜의 모든 이벤트 목록 제공
+      return {
+        found: false,
+        reason: 'no-match-by-title-or-time',
+        message: eventTitle 
+          ? `"${eventTitle}" 일정을 찾지 못했습니다. ${targetDate.toLocaleDateString('ko-KR')}에 유사한 일정이 없습니다.`
+          : `${targetDate.toLocaleDateString('ko-KR')}에 지정한 시간대의 일정을 찾지 못했습니다.`,
+        events: events.slice(0, 5).map(e => ({
+          summary: e.summary,
+          start: e.start.dateTime || e.start.date
+        }))
+      };
+    }
     
   } catch (error) {
     console.error('[채팅] 일정 검색 실패:', error.message);
@@ -938,43 +987,78 @@ async function findEventByTitle(req, eventTitle, targetDate) {
       console.error('[채팅] API 응답 상태:', error.response.status);
       console.error('[채팅] API 오류 데이터:', error.response.data);
     }
-    return null;
+    return {
+      found: false,
+      reason: 'error',
+      message: '일정 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+    };
   }
 }
 
-// 시간이 가장 가까운 이벤트 찾기
+// 시간에 가장 가까운 이벤트 찾기
 function findClosestEventByTime(events, targetDate) {
-  if (!events || events.length === 0) return null;
-  
-  console.log(`[채팅] 목표 시간에 가장 가까운 이벤트 검색: ${targetDate.toISOString()}`);
-  const targetTime = targetDate.getTime();
-  
-  // 각 이벤트의 시작 시간과 목표 시간의 차이를 계산
-  const eventsWithTimeDiff = events.map(event => {
-    const eventStartTime = new Date(event.start.dateTime || event.start.date).getTime();
-    const timeDifference = Math.abs(eventStartTime - targetTime);
-    
-    // 1시간 = 3600000 밀리초
-    const hoursDifference = timeDifference / 3600000;
-    console.log(`[채팅] 이벤트 "${event.summary}" 시간 차이: ${hoursDifference.toFixed(2)}시간`);
-    
-    return { event, timeDifference, hoursDifference };
-  });
-  
-  // 시간 차이가 1시간 이내인 이벤트만 필터링
-  const closeEvents = eventsWithTimeDiff.filter(e => e.hoursDifference <= 1);
-  
-  if (closeEvents.length > 0) {
-    // 가장 시간 차이가 적은 이벤트 선택
-    const closest = closeEvents.reduce((prev, current) => 
-      prev.timeDifference < current.timeDifference ? prev : current
-    );
-    
-    console.log(`[채팅] 가장 가까운 이벤트 찾음: "${closest.event.summary}", 시간 차이: ${closest.hoursDifference.toFixed(2)}시간`);
-    return closest.event;
+  if (!events || events.length === 0) {
+    console.log('[채팅] 일치하는 이벤트가 없습니다');
+    return null;
   }
   
-  console.log('[채팅] 1시간 이내에 일치하는 이벤트가 없습니다');
+  console.log(`[채팅] 시간 기준 이벤트 검색: 목표 시간 ${targetDate.toISOString()}`);
+  
+  let closestEvent = null;
+  let minTimeDiff = Infinity;
+  
+  const targetTime = targetDate.getTime();
+  
+  events.forEach(event => {
+    if (!event.start || (!event.start.dateTime && !event.start.date)) {
+      console.log(`[채팅] 이벤트에 시작 시간 정보가 없습니다: ${event.summary || '제목 없음'}`);
+      return;
+    }
+    
+    const eventTime = new Date(event.start.dateTime || event.start.date).getTime();
+    const timeDiff = Math.abs(eventTime - targetTime);
+    
+    console.log(`[채팅] 이벤트: "${event.summary}", 시간 차이: ${Math.round(timeDiff / (60 * 1000))}분`);
+    
+    if (timeDiff < minTimeDiff) {
+      minTimeDiff = timeDiff;
+      closestEvent = event;
+    }
+  });
+  
+  // 2시간(7,200,000 밀리초) 이내의 이벤트만 반환
+  const twoHoursInMs = 2 * 60 * 60 * 1000;
+  if (closestEvent && minTimeDiff <= twoHoursInMs) {
+    console.log(`[채팅] 가장 가까운 이벤트 찾음: "${closestEvent.summary}", 시간 차이: ${Math.round(minTimeDiff / (60 * 1000))}분`);
+    return closestEvent;
+  }
+  
+  console.log(`[채팅] 2시간 이내의 적합한 이벤트를 찾지 못했습니다. 최소 시간 차이: ${Math.round(minTimeDiff / (60 * 1000))}분`);
+  
+  // 가장 가까운 이벤트를 찾았지만 시간 차이가 너무 큰 경우 처리
+  if (closestEvent && minTimeDiff > 120 * 60 * 1000) { // 시간 차이가 2시간 이상인 경우
+    console.log(`이벤트를 찾았지만 시간 차이가 너무 큼 (${minTimeDiff/(60*1000)}분). 가장 가까운 이벤트 반환.`);
+    
+    // 시간 차이를 사용자 친화적인 형식으로 변환
+    const diffHours = Math.floor(minTimeDiff / (60 * 60 * 1000));
+    const diffMinutes = Math.floor((minTimeDiff % (60 * 60 * 1000)) / (60 * 1000));
+    let timeMessage = '';
+    
+    if (diffHours > 0) {
+      timeMessage += `${diffHours}시간 `;
+    }
+    if (diffMinutes > 0 || diffHours === 0) {
+      timeMessage += `${diffMinutes}분`;
+    }
+    
+    return {
+      success: false,
+      message: `정확한 시간에 일정을 찾지 못했습니다. 가장 가까운 일정은 ${timeMessage} ${minTimeDiff > 0 ? '후' : '전'}에 있습니다.`,
+      reason: 'time-too-far',
+      event: closestEvent
+    };
+  }
+  
   return null;
 }
 
@@ -985,16 +1069,19 @@ function extractEventTitle(message, action) {
   let eventTitle = '';
   
   if (action === 'delete') {
-    // 삭제 요청에서 제목 추출
+    // 삭제 요청에서 제목 추출 패턴 확장
     const deletePatterns = [
-      /(.+?)(?:일정|약속|미팅|회의)(?:을|를)?\s*(?:삭제|제거|취소)(?:해줘|해 줘|해주세요|부탁해)/i,
-      /(?:삭제|제거|취소)(?:해줘|해 줘|해주세요|부탁해)\s*(.+?)(?:일정|약속|미팅|회의)?/i
+      /(.+?)(?:일정|약속|미팅|회의)(?:을|를)?\s*(?:삭제|제거|취소)(?:해줘|해 줘|해주세요|부탁해|해)/i,
+      /(?:삭제|제거|취소)(?:해줘|해 줘|해주세요|부탁해|해)\s*(.+?)(?:일정|약속|미팅|회의)?/i,
+      /(.+?)(?:을|를)?\s*(?:삭제|제거|취소)(?:해줘|해 줘|해주세요|부탁해|해)/i,
+      /(?:오늘|내일|모레|다음 주)?\s*(.+?)\s*(?:일정|약속|미팅|회의)?\s*(?:삭제|제거|취소)/i
     ];
     
     for (const pattern of deletePatterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
         eventTitle = match[1].trim();
+        console.log(`[채팅] 삭제 패턴으로 추출된 제목: "${eventTitle}"`);
         break;
       }
     }
@@ -1060,11 +1147,10 @@ router.post('/', async (req, res) => {
 4. 응답 형식
 {
   "is_calendar_related": true,
-  "text": "사용자에게 보여줄 메시지",
   "action": "add/remove/edit/none",
   "title": "일정 이름",
-  "start_datetime": "YYYY-MM-DDTHH:MM:SS+09:00",
-  "end_datetime": "YYYY-MM-DDTHH:MM:SS+09:00"
+  "start_datetime": "YYYY-MM-DDTHH:MM:SS",
+  "end_datetime": "YYYY-MM-DDTHH:MM:SS"
 }
 
 * 날짜/시간: ISO 8601 형식(YYYY-MM-DDTHH:MM:SS+09:00), 현재 시각: ${new Date().toISOString()}
@@ -1094,13 +1180,15 @@ router.post('/', async (req, res) => {
       const action = parsedResponse.action;
       console.log('[채팅] 파싱된 액션:', action);
 
-      let responseMessage = parsedResponse.text;
+      // 서버 측에서 액션에 따른 기본 응답 메시지 설정
+      let responseMessage = "";
       let eventDetails = null;
 
       // 액션에 따른 처리
       if (action === 'add') {
         // 필수값 체크 (title, start_datetime)
         if (!parsedResponse.title || !parsedResponse.start_datetime) {
+          responseMessage = "일정을 추가하려면 제목과 시작 시간이 필요합니다.";
           return res.json({
             message: responseMessage,
             action: action
