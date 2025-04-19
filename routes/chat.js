@@ -1045,24 +1045,26 @@ router.post('/', async (req, res) => {
           content: `일정 관리 봇으로서 메시지 분석 후 JSON으로 응답하세요:
 
 1. 일정 관련 여부 판단
-   - 일정 관련 아니면: {"is_calendar_related": false, "text": "저는 일정 관리에 관한 질문만 답변할 수 있습니다."}
-   - 일정 관련이면: action(add/remove/edit), title, start_datetime, end_datetime 추출
+   - 아니면:  
+     false
+   - 관련되면: action, title, start_datetime, end_datetime 추출
 
-2. 액션별 처리:
-   - add: title, start_datetime(필수), end_datetime(선택)
-     필수값 누락 시: "XX를 알려주세요" 메시지
-     모두 있으면: "일정 추가를 처리하겠습니다" 추가
-   - remove: title 또는 start_datetime(필수)
-     필수값 있으면: "일정 삭제를 처리하겠습니다" 추가
+2. title 규칙
+   - "대상 + 명사형 이벤트" 형태로 변환  
+     예: "낼 엄마랑 아빠랑 해운대 갈거야" → "엄마 아빠 해운대 방문"
 
-3. 응답 형식:
+3. 액션 처리
+   - add: start_datetime 필수, end_datetime 선택 → 누락 시 요청  
+   - remove: title 또는 start_datetime 필수 
+
+4. 응답 형식
 {
   "is_calendar_related": true,
   "text": "사용자에게 보여줄 메시지",
   "action": "add/remove/edit/none",
   "title": "일정 이름",
-  "start_datetime": "YYYY-MM-DDTHH:MM:SS",
-  "end_datetime": "YYYY-MM-DDTHH:MM:SS"
+  "start_datetime": "YYYY-MM-DDTHH:MM:SS+09:00",
+  "end_datetime": "YYYY-MM-DDTHH:MM:SS+09:00"
 }
 
 * 날짜/시간: ISO 8601 형식(YYYY-MM-DDTHH:MM:SS+09:00), 현재 시각: ${new Date().toISOString()}
@@ -1084,7 +1086,7 @@ router.post('/', async (req, res) => {
       // 일정 관련 내용이 아닐 경우
       if (!parsedResponse.is_calendar_related) {
         return res.json({
-          message: parsedResponse.text,
+          message: "저는 일정 관리에 관한 질문만 답변할 수 있습니다.",
           action: "none"
         });
       }
